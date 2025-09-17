@@ -24,6 +24,7 @@ ERROR_CODE_REG = 3  # error code register
 
 # ----------
 # CMD_REG 命令寄存器
+# 2: 补充豆子
 # 1: 磨粉命令写入
 # 0: 处理命令结束，重置为0
 # ----------

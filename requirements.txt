@@ -1,0 +1,12 @@
+# Smart Coffee Shop - Python Dependencies
+# Author: Orange horrorange@qq.com
+# Last-modified: 2025-09-17
+
+# Modbus TCP communication library
+pyModbusTCP>=0.2.0
+
+# Standard libraries (included with Python)
+# time - for delays and timing
+# random - for simulating random bean consumption
+# argparse - for command line argument parsing
+# logging - for debug and info logging
