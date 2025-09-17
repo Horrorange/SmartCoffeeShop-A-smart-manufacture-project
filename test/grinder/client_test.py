@@ -94,4 +94,19 @@ if regs:
 else:
     logging.error("Failed to read grinder status")
 
+# ---------------- 5.补充豆子
+logging.debug("--- Add Bean ---")
+
+is_ok = client.write_single_register(CMD_REG, 2)
+if is_ok:
+    logging.debug("Command [Add Bean] sent sucessfully.")
+else:
+    logging.error("Failed to send command.")
+    exit()
+
+# ---------------- 6.补充验证
+logging.debug("--- Add Bean Verification ---")
+bean_level = client.read_holding_registers(BEAN_LEVEL_REG, 1)[0]
+logging.debug(f"Bean level after add: {bean_level}%")
+
 client.close()

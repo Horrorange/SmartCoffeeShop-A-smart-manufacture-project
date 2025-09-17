@@ -92,6 +92,15 @@ try:
                 logging.debug(f"Grinding complete. New bean level: {new_bean_level}%.")
                 logging.debug("Grinder status: Idle.")
 
+        elif command == 2:
+            logging.debug("Add bean...")
+            # 重置CMD_REG
+            server.data_bank.set_holding_registers(CMD_REG, [0])
+            # 延迟2秒
+            time.sleep(2)
+            server.data_bank.set_holding_registers(BEAN_LEVEL_REG, [100])
+            logging.debug(f"Add bean complete. Bean level: {server.data_bank.get_holding_registers(BEAN_LEVEL_REG, 1)[0]}%.")
+
         # 循环时间
         time.sleep(0.5)
 
