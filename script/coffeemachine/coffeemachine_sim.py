@@ -71,25 +71,38 @@ def check_and_custom_ingredients(coffee_type):
     检查咖啡的原料是否充足，如果充足则消耗，不充足则返回False和缺少的原材料列表
     """
     recipe = recipes.get(coffee_type)
-    if not recipe:
+    if recipe is None:
         logger.error(f"Unknown coffee type: {coffee_type}")
-        return False, None
+        return False, []
     
     with inventory_lock:
         required_ingredients = []
+        # 首先检查所有原料是否充足
         for ingredient, amount in recipe.items():
             if inventory[ingredient] < amount:
                 logger.error(f"Not enough {ingredient} for {coffee_type}")
                 required_ingredients.append(ingredient)
-            if required_ingredients:
-                return False, required_ingredients
+        
+        # 如果有缺少的原料，返回False和缺少的原料列表
+        if required_ingredients:
+            return False, required_ingredients
 
+        # 如果所有原料都充足，则消耗原料
         for ingredient, amount in recipe.items():
             inventory[ingredient] -= amount
 
         logger.info(f"Successfully made {coffee_type}, current inventory: {inventory}")
-        return True, None
+        return True, []
 
+# ------------------------------
+# 自定义报文操作逻辑
+# 编码格式： utf-8
+# ｜ 指令类型            ｜ 成功返回值                     ｜ 失败返回值 
+# ｜ MAKE:COFFEE_TYPE   | DONE:SUCCESS                  | ERROR:INSUFFICIENT_INGREDIENT  ERROR:UNKNOWN_COFFEE_TYPE
+# ｜ REFILL:INGREDIENT  | ACK:REFILL_SUCCESS:INGREDIENT | ERROR:UNKNOWN_INGREDIENT
+# ｜ REFILL:ALL         | ACK:REFILL_SUCCESS:ALL        | N/A
+# ｜ STATUS:INGREDIENTS | ACK:STATUS:INVENTORY:MILK=50  | N/A
+# ------------------------------
 def handle_client(conn, addr):
     """
     处理客户端连接，接收客户端发送的咖啡类型，检查原料是否充足，充足则制作咖啡，不充足则返回错误信息
@@ -152,7 +165,7 @@ def handle_client(conn, addr):
                 
                 elif command == "STATUS" and payload == "INGREDIENTS":
                         with inventory_lock:
-                            status_string = ",".join([f"{ingredient}:{amount}" for ingredient, amount in inventory.items()])
+                            status_string = ",".join([f"{ingredient}={amount}" for ingredient, amount in inventory.items()])
                         resp = f"STATUS:INGREDIENTS:{status_string}\n"
                         conn.sendall(resp.encode('utf-8'))
                         logger.info(f"Sent inventory status: {status_string}")
