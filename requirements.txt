@@ -1,12 +1,27 @@
 # Smart Coffee Shop - Python Dependencies
 # Author: Orange horrorange@qq.com
-# Last-modified: 2025-09-17
+# Last-modified: 2025-09-18
 
-# Modbus TCP communication library
+# Core dependencies for the smart coffee shop system
+
+# Modbus TCP communication library for grinder simulation
 pyModbusTCP>=0.2.0
 
-# Standard libraries (included with Python)
-# time - for delays and timing
-# random - for simulating random bean consumption
+# Colored logging support for better console output
+colorlog>=6.0.0
+
+# Development and testing dependencies (optional)
+# Uncomment the following lines if you want to install development tools
+# pytest>=6.0.0
+# pytest-cov>=2.0.0
+# black>=21.0.0
+# flake8>=3.8.0
+
+# Standard libraries (included with Python, no installation needed)
+# socket - for TCP communication with coffee machine
+# threading - for concurrent operations
+# time - for delays and timing simulation
+# random - for simulating random bean consumption and realistic behavior
 # argparse - for command line argument parsing
 # logging - for debug and info logging
+# pickle - for data serialization (used in agent)

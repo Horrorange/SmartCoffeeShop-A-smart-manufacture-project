@@ -118,6 +118,7 @@ def handle_order(coffee_type: str, grinder: ModbusClient, coffee_maker: socket.s
                 can_make = False
                 missing_ingredient.append(ingredient)
 
+    # -------- 原料充足，开始制作逻辑
     if can_make:
         logger.info("原料充足，开始进行制作")
 
@@ -157,6 +158,7 @@ def handle_order(coffee_type: str, grinder: ModbusClient, coffee_maker: socket.s
             logger.info(f"咖啡 {coffee_type} 制作成功")
         else:
             logger.error(f"咖啡 {coffee_type} 制作失败，错误信息：{done_response}")
+    # -------- 原料不足，自动补货逻辑
     else:
         logger.warning(f"咖啡 {coffee_type} 制作失败，缺失原料：{', '.join(missing_ingredient)}")
 
@@ -172,8 +174,9 @@ def handle_order(coffee_type: str, grinder: ModbusClient, coffee_maker: socket.s
             logger.error(f"咖啡 {coffee_type} 自动补货失败，错误信息：{refill_ack}")
 
 def main():
+    # 创建与磨粉机的连接
     grinder_client = ModbusClient(host=GRINDER_HOST, port=GRINDER_PORT)
-
+    # 创建与咖啡机的连接
     try:
         coffee_maker_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         coffee_maker_socket.connect((COFFEE_MACHINE_HOST, COFFEE_MACHINE_PORT))
@@ -182,6 +185,7 @@ def main():
         return
     
     logger.info("成功连接到咖啡机与磨粉机")
+    # 制作逻辑
     try:
         handle_order("LATTE", grinder_client, coffee_maker_socket)
         time.sleep(2)
