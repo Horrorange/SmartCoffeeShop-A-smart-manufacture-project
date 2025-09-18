@@ -99,6 +99,7 @@ try:
             # 延迟2秒
             time.sleep(2)
             server.data_bank.set_holding_registers(BEAN_LEVEL_REG, [100])
+            server.data_bank.set_holding_registers(ERROR_CODE_REG, [0])
             logging.debug(f"Add bean complete. Bean level: {server.data_bank.get_holding_registers(BEAN_LEVEL_REG, 1)[0]}%.")
 
         # 循环时间

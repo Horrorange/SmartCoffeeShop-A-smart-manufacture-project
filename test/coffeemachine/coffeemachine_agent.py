@@ -6,7 +6,6 @@ Last-modified: 2025-09-18
 - 实现本地决策，完成订单的制作
 '''
 # 套接字接口编程
-from pickle import TRUE
 import socket
 from pyModbusTCP.client import ModbusClient
 import time
@@ -44,6 +43,8 @@ COFFEE_MACHINE_PORT = 8888
 
 CMD_REG = 0             # 指令寄存器
 STATUS_REG = 1          # 状态寄存器 
+BEAN_LEVEL_REG = 2      # 豆量寄存器
+ERROR_CODE_REG = 3      # 错误代码寄存器
 
 # -------------------- 2. 决策菜谱
 RECIPES = {
@@ -77,6 +78,19 @@ def parse_inventory(status_string: str) -> dict:
         logger.error(f"解析咖啡机状态字符串:'{status_string}'失败，错误信息：{e}")
         return {}
 
+
+def refill_coffee_beans(grinder: ModbusClient) -> bool:
+    """
+    向磨粉机发送指令，补充咖啡豆
+    """
+    logger.info("向磨粉机发送指令，补充咖啡豆")
+    try:
+        grinder.write_single_register(CMD_REG, 2) # 发送指令2，补充咖啡豆
+        return True
+    except Exception as e:
+        logger.error(f"向磨粉机发送补充咖啡豆指令失败，错误信息：{e}")
+        return False
+
 def handle_order(coffee_type: str, grinder: ModbusClient, coffee_maker: socket.socket):
     """
     处理订单，根据菜谱检查原料是否充足，充足则发送指令给磨粉机和咖啡机，不充足则返回错误信息
@@ -107,7 +121,7 @@ def handle_order(coffee_type: str, grinder: ModbusClient, coffee_maker: socket.s
 
     # ------- 在网关本地检查原料是否充足
     logger.info(f"检查配方 {coffee_type} 是否符合当前库存 {inventory}")
-    can_make = TRUE
+    can_make = True
     missing_ingredient = []
 
     if not recipe:
@@ -117,11 +131,32 @@ def handle_order(coffee_type: str, grinder: ModbusClient, coffee_maker: socket.s
             if inventory.get(ingredient, 0) < amount:
                 can_make = False
                 missing_ingredient.append(ingredient)
+    
+    # -------- 检查咖啡豆是否充足
+    bean_level = grinder.read_holding_registers(BEAN_LEVEL_REG, 1)[0]
+    error_code = grinder.read_holding_registers(ERROR_CODE_REG, 1)[0]
+    if bean_level < 10 or error_code == 1:
+        logger.warning(f"磨豆机咖啡豆不足 (当前豆量: {bean_level}%)，开始自动补充...")
+        try:
+            refill_coffee_beans(grinder)
+        except Exception as e:
+            logger.error(f"自动补充咖啡豆失败，错误信息：{e}")
+            return
+    else:
+        logger.info(f"当前咖啡豆数量：{bean_level}%")
+    
+    # -------- 检查咖啡豆是否补充
+    while bean_level < 10 or error_code == 1:
+        bean_level = grinder.read_holding_registers(BEAN_LEVEL_REG, 1)[0]
+        error_code = grinder.read_holding_registers(ERROR_CODE_REG, 1)[0]
+        if bean_level >= 10 and error_code == 0:
+            logger.info(f"补充完成，当前咖啡豆数量：{bean_level}%")
+            break
+        time.sleep(1)  # 等待1秒后再次检查
 
     # -------- 原料充足，开始制作逻辑
     if can_make:
         logger.info("原料充足，开始进行制作")
-
         logger.info(f"  -> 向磨粉机发送指令...")
         grinder.write_single_register(CMD_REG, 1) # 发送指令1，开始研磨
 
