@@ -7,6 +7,7 @@ import paho.mqtt.client as mqtt
 import time
 import json
 import logging
+import os
 from colorlog import ColoredFormatter
 import random
 
@@ -31,8 +32,9 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 # ---------------- 配置服务器
-MQTT_BROKER_HOST = "0.0.0.0"                    # 监听所有网络接口
-MQTT_BROKER_PORT = 1883                         # MQTT默认端口
+# 在容器网络中应使用服务名访问Broker，支持环境变量覆盖
+MQTT_BROKER_HOST = os.getenv("MQTT_HOST", "mqtt_broker")
+MQTT_BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
 COMMAND_TOPIC = "test/delivery_robot/command"   # 命令话题，用于接收订单指令
 STATUS_TOPIC = "test/delivery_robot/status"     # 状态话题，用于发送配送状态
 
@@ -126,13 +128,19 @@ def main():
     client.on_message = on_message  # 收到消息回调
 
     logger.info("正在连接到MQTT Broker...")
-    # 连接到MQTT代理
-    try:
-        client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
-        logger.info("已成功连接到MQTT Broker")
-    except Exception as e:
-        logger.error(f"连接MQTT Broker失败: {e}")
-        return
+    # 连接到MQTT代理，增加重试以等待Broker就绪
+    max_attempts = 5
+    for attempt in range(1, max_attempts + 1):
+        try:
+            client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
+            logger.info("已成功连接到MQTT Broker")
+            break
+        except Exception as e:
+            if attempt == max_attempts:
+                logger.error(f"连接MQTT Broker失败: {e}")
+                return
+            logger.warning(f"连接失败，第{attempt}次重试，原因: {e}")
+            time.sleep(2)
     
     # 保持连接并处理消息
     client.loop_forever()

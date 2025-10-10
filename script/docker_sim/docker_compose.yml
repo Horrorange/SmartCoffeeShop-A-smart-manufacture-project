@@ -1,0 +1,68 @@
+# services 定义了所有的容器
+services:
+  # 1. 磨豆机服务 (Modbus) - 实例1
+  grinder1:
+    build: ../grinder/
+    container_name: grinder1
+    ports:
+      - "5021:502"
+    networks:
+      - coffee-net
+
+  # 1b. 磨豆机服务 (Modbus) - 实例2
+  grinder2:
+    build: ../grinder/
+    container_name: grinder2
+    ports:
+      - "5022:502"
+    networks:
+      - coffee-net
+
+  # 2. 咖啡机服务 (自定义TCP)
+  coffee_machine:
+    build: ../coffeemachine/
+    container_name: coffee_machine
+    ports:
+      - "8888:8888"
+    networks:
+      - coffee-net
+
+  # 3. 制冰机服务 (S7)
+  ice_maker:
+    build: ../ice_maker/
+    container_name: ice_maker
+    ports:
+      - "102:102"
+    networks:
+      - coffee-net
+
+  # 4. 送餐机器人服务 (MQTT客户端)
+  delivery_robots:
+    build: ../delivery_robots/
+    container_name: delivery_robots
+    environment:
+      - MQTT_HOST=mqtt-broker
+      - MQTT_PORT=1883
+    # ports: - 1883:1883  <-- 已删除，客户端不需要暴露端口
+    networks:
+      - coffee-net
+    # 确保此服务依赖于 broker 启动
+    depends_on:
+      - mqtt_broker
+
+  # 5. MQTT Broker 服务 (MQTT服务器)
+  mqtt_broker:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883" # MQTT标准端口
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    networks:
+      - coffee-net
+
+# 定义网络
+networks:
+  coffee-net: # <-- 名称与上面服务中使用的完全一致
+    driver: bridge
+
