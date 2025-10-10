@@ -255,3 +255,81 @@ SmartCoffeeShop-A-smart-manufacture-project/
 ---
 
 ⭐ 如果这个项目对你有帮助，请给我们一个星标！
+
+## 🐳 Docker 使用指南
+
+本项目提供基于 Docker Compose 的一键式设备模拟与联调环境，覆盖磨豆机、咖啡机、制冰机、送餐机器人以及 MQTT Broker。
+
+### 目录结构（Docker）
+- `script/docker_sim/docker_compose.yml`：Compose 主文件，定义所有服务与网络
+- `script/docker_sim/mosquitto.conf`：MQTT Broker 配置（开发环境开启匿名访问）
+- `script/grinder/`：磨豆机镜像构建上下文与模拟器脚本
+- `script/coffeemachine/`：咖啡机镜像构建上下文与模拟器脚本
+- `script/ice_maker/`：制冰机镜像构建上下文与模拟器脚本
+- `script/delivery_robots/`：送餐机器人镜像构建上下文与模拟器脚本
+- `test/`：各设备的客户端/联调测试脚本
+
+### 环境准备
+- 安装 Docker Desktop（推荐 24+，Compose v2）
+- 打开终端并切换到项目根目录 `SmartCoffeeShop-A-smart-manufacture-project`
+- Windows 用户使用 PowerShell 执行命令
+
+### 一键启动
+- 构建并后台启动全部服务：
+  - `docker compose -f script/docker_sim/docker_compose.yml up -d --build`
+- 查看运行状态与端口：
+  - `docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"`
+
+### 服务与端口
+- `grinder1`：主机 `5021` → 容器 `502`（Modbus TCP）
+- `grinder2`：主机 `5022` → 容器 `502`（Modbus TCP）
+- `coffee_machine`：主机 `8888` → 容器 `8888`（自定义 TCP）
+- `ice_maker`：主机 `102` → 容器 `102`（S7/snap7）
+- `mqtt-broker`：主机 `1883` → 容器 `1883`（MQTT Broker）
+- `delivery_robots`：MQTT 客户端，不暴露端口，连接到 `mqtt-broker`
+
+### 常用操作
+- 启动指定服务：
+  - `docker compose -f script/docker_sim/docker_compose.yml up -d grinder1 grinder2`
+- 重新构建并启动：
+  - `docker compose -f script/docker_sim/docker_compose.yml up -d --build <service>`
+- 查看日志：
+  - `docker logs --tail=100 -f <container>`（如 `delivery_robots`、`mqtt-broker`）
+- 停止并清理：
+  - `docker compose -f script/docker_sim/docker_compose.yml down`
+  - 移除卷：`docker compose -f script/docker_sim/docker_compose.yml down -v`
+
+### MQTT 配置说明
+- Broker 镜像：`eclipse-mosquitto:2`
+- 配置挂载：`script/docker_sim/mosquitto.conf`（开发模式）
+  - `listener 1883 0.0.0.0`
+  - `allow_anonymous true`
+- 送餐机器人环境变量（已在 Compose 注入）：
+  - `MQTT_HOST=mqtt-broker`
+  - `MQTT_PORT=1883`
+
+### 验证与测试
+- 磨豆机（Modbus TCP）：
+  - 连接 `localhost:5021` 或 `localhost:5022`
+  - 示例：`python test/grinder/client_test.py`
+- 咖啡机（TCP）：
+  - 连接 `localhost:8888`（`telnet` 或 `nc`）
+- 制冰机（S7）：
+  - 使用 S7 客户端连接 `localhost:102` 进行区块读写测试
+- 送餐机器人（MQTT）：
+  - 连接 `localhost:1883`
+  - 发布到 `test/delivery_robot/command`，订阅 `test/delivery_robot/status`
+  - 示例消息：`{"order_id": 1, "coffee_type": "LATTE", "need_ice": false, "table_number": 3}`
+
+### 多实例扩展
+- 已在 Compose 中提供两台磨豆机：`grinder1` 与 `grinder2`
+- 如需更多实例，可复制服务块并映射新的主机端口（例如 `5023:502`）
+
+### 故障排查
+- 端口冲突（port is already allocated）：
+  - `docker rm -f <container>` 后重启对应服务
+- MQTT 连接被拒绝：
+  - 确认 `mqtt-broker` 已启动并加载 `mosquitto.conf`
+  - 确认 `delivery_robots` 使用 `MQTT_HOST=mqtt-broker`
+- `python-snap7` 加载失败：
+  - 使用 `python:3.11-slim` 作为 `ice_maker` 基础镜像（已配置）
