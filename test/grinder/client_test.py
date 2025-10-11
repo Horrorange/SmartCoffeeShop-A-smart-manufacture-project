@@ -28,7 +28,7 @@ args = parser.parse_args()
 
 # 读取IP地址
 SERVER_HOST = args.host
-SERVER_PORT = 502
+SERVER_PORT = 5021
 
 # 连接Modbus服务
 client = ModbusClient(host=SERVER_HOST, port=SERVER_PORT, auto_open=False)

@@ -4,146 +4,194 @@ package drivers
 
 import (
 	"fmt"
-
+	"time"
 	"github.com/robinson/gos7"
 )
 
-// --- 1. S7 PLC (制冰机) 内存布局定义 ---
-//
-// 所有数据都存放在数据块 DB 1 中。
+
 const (
-	// 数据块编号
-	iceMakerDBNumber = 1
+	iceMakerDBNumber = 1			// 所有内存都在DB1中
 
 	// 读取地址偏移 (单位: byte)
-	iceMakerStockOffset  = 0 // INT, 当前冰块库存 (克)
-	iceMakerStatusOffset = 2 // INT, 设备状态 (0=待机, 1=制冰中, 2=出冰中, 3=故障)
+	iceMakerStockOffset  = 0 		// INT, 当前冰块库存 (克)
+	iceMakerStatusOffset = 2 		// INT, 设备状态 (0=待机, 1=制冰中, 2=出冰中, 3=故障)	
 
 	// 写入地址偏移 (单位: byte)
-	iceMakerCommandOffset = 4 // INT, 网关指令 (1=制冰, 3=取冰)
-	iceMakerAmountOffset  = 6 // INT, 本次取冰量 (克)
+	iceMakerCommandOffset = 4 		// INT, 网关指令 (1=制冰, 3=取冰)
+	iceMakerAmountOffset  = 6 		// INT, 本次取冰量 (克)
 )
 
 // --- 2. 驱动结构体定义 ---
-type IceMakerS7Driver struct {
+type IceMakerDriver struct {
 	client  gos7.Client // gos7 客户端实例
 	handler *gos7.TCPClientHandler
 }
 
-// 编译时检查，确保 IceMakerS7Driver 实现了 Device 接口
-var _ Device = (*IceMakerS7Driver)(nil)
+// 编译时检查，确保 IceMakerDriver 实现了 Device 接口
+var _ Device = (*IceMakerDriver)(nil)
 
 // --- 3. 构造函数 ---
-//
-// NewIceMakerS7Driver 创建一个新的制冰机驱动实例。
-// rack 和 slot 通常对于S7-1200/1500等型号是固定的。
-func NewIceMakerS7Driver(host, port string, rack, slot int) *IceMakerS7Driver {
+func NewIceMakerDriver(host, port string, rack, slot int) *IceMakerDriver {
 	handler := gos7.NewTCPClientHandler(fmt.Sprintf("%s:%s", host, port), rack, slot)
-	// gos7库的默认超时是2秒，对于模拟器足够了
-	// handler.Timeout = 5 * time.Second
-	// handler.IdleTimeout = 5 * time.Second
+	// rack = 0, slot = 1 是默认值，通常不需要修改
+	// 设置默认超时时间为5秒
+	handler.Timeout = 5 * time.Second
+	handler.IdleTimeout = 5 * time.Second
 
+	// 创建 gos7 客户端实例
 	client := gos7.NewClient(handler)
 
-	return &IceMakerS7Driver{
+	// 返回 IceMakerDriver 实例
+	return &IceMakerDriver{
 		client:  client,
 		handler: handler,
 	}
 }
 
-//
 // --- 4. 接口方法实现 ---
-//
-
 // Connect 负责建立与S7 PLC的连接。
-func (d *IceMakerS7Driver) Connect() error {
-	if err := d.handler.Connect(); err != nil {
-		return fmt.Errorf("failed to connect to S7 PLC (ice maker): %w", err)
-	}
-	fmt.Println("S7 PLC (ice maker) driver connected.")
-	return nil
+func (d *IceMakerDriver) Connect() error {
+    if err := d.handler.Connect(); err != nil {
+        return fmt.Errorf("connect: %w", err)
+    }
+    fmt.Println("S7 PLC (ice maker) driver connected.")
+    return nil
 }
 
 // Disconnect 负责断开与S7 PLC的连接。
-func (d *IceMakerS7Driver) Disconnect() error {
+func (d *IceMakerDriver) Disconnect() error {
 	defer fmt.Println("S7 PLC (ice maker) driver disconnected.")
 	return d.handler.Close()
 }
 
-// GetStatus 从DB1中读取数据，并转换为标准状态模型。
-func (d *IceMakerS7Driver) GetStatus() (DeviceStatus, error) {
-	emptyStatus := DeviceStatus{Inventory: make(map[string]int)}
-
-	// 我们需要从地址0开始，读取4个字节，以同时获取库存(INT, 2字节)和状态(INT, 2字节)
-	buffer := make([]byte, 4)
-	if err := d.client.AGReadDB(iceMakerDBNumber, 0, 4, buffer); err != nil {
-		return emptyStatus, fmt.Errorf("failed to read DB1 from ice maker: %w", err)
-	}
-
-	var helper gos7.Helper
-	var stock uint16
-	var statusVal uint16
-	helper.GetValueAt(buffer, 0, &stock)
-	helper.GetValueAt(buffer, 2, &statusVal)
-
-	status := DeviceStatus{
-		IsIdle:    statusVal == 0, // 0=待机
-		ErrorCode: 0,
-		Inventory: map[string]int{
-			"ICE": int(stock), // 将库存存入map
-		},
-	}
-	if statusVal == 3 { // 3=故障
-		status.ErrorCode = 1
-	}
-
-	return status, nil
+// GetIceAmount 从DB1中读取当前冰块库存。
+func (d *IceMakerDriver) GetIceAmount() int {
+    v, err := d.readU16(iceMakerStockOffset)
+    if err != nil { return 0 }
+    return int(v)
 }
 
-// ExecuteTask 将通用任务翻译成对DB1的具体写操作。
-func (d *IceMakerS7Driver) ExecuteTask(task Task) error {
-	switch task.Command {
-	case "MAKE_ICE":
-		// 制冰指令的值为 1
-		commandValue := 1
-		buffer := make([]byte, 2) // 一个INT是2个字节
-		var helper gos7.Helper
-		helper.SetValueAt(buffer, 0, uint16(commandValue))
+// getIceMakerStatus 从DB1中读取当前冰块设备状态。
+func (d *IceMakerDriver) getIceMakerStatus() int {
+    v, err := d.readU16(iceMakerStatusOffset)
+    if err != nil { return 0 }
+    return int(v)
+}
 
-		// 将指令写入DB1的指令地址
-		if err := d.client.AGWriteDB(iceMakerDBNumber, iceMakerCommandOffset, 2, buffer); err != nil {
-			return fmt.Errorf("failed to execute 'MAKE_ICE' command: %w", err)
+// RefillIce 向DB1写入指令，请求补充冰块库存。
+func (d *IceMakerDriver) RefillIce() error {
+    // 下发补充指令=1
+    if err := d.writeU16(iceMakerCommandOffset, 1); err != nil {
+        return fmt.Errorf("write cmd: %w", err)
+    }
+	// 等待冰块补充完成，用设备状态和冰量判断是否补充完成
+	for {
+		status := d.getIceMakerStatus()
+		iceAmount := d.GetIceAmount()
+		if status == 0 && iceAmount > 999{
+			break
 		}
-		// 指令写入后，PLC会自动开始工作并重置指令位，所以驱动的任务就完成了。
-		return nil
-
-	case "DISPENSE_ICE":
-		// 取冰任务需要两个参数：取冰量 和 取冰指令
-
-		// 1. 获取取冰量
-		amount, ok := task.Params["amount_grams"].(int)
-		if !ok || amount <= 0 {
-			return fmt.Errorf("task 'DISPENSE_ICE' requires a positive integer 'amount_grams' parameter")
-		}
-
-		// 2. 准备写入取冰量的数据
-		amountBuffer := make([]byte, 2)
-		var helper gos7.Helper
-		helper.SetValueAt(amountBuffer, 0, uint16(amount))
-		if err := d.client.AGWriteDB(iceMakerDBNumber, iceMakerAmountOffset, 2, amountBuffer); err != nil {
-			return fmt.Errorf("failed to write dispense amount: %w", err)
-		}
-
-		// 3. 准备并写入取冰指令 (值为3)
-		commandValue := 3
-		commandBuffer := make([]byte, 2)
-		helper.SetValueAt(commandBuffer, 0, uint16(commandValue))
-		if err := d.client.AGWriteDB(iceMakerDBNumber, iceMakerCommandOffset, 2, commandBuffer); err != nil {
-			return fmt.Errorf("failed to execute 'DISPENSE_ICE' command: %w", err)
-		}
-		return nil
-
-	default:
-		return fmt.Errorf("unsupported command for ice maker: '%s'", task.Command)
+		time.Sleep(1 * time.Second)
 	}
+	return nil
+}
+
+func (d *IceMakerDriver) Execute(command string) (*ExecutionResult, error) {
+    // command = "ICEMAKER:LESS" or "ICEMAKER:MUCH"
+    switch command{
+    case "ICEMAKER:LESS":
+        // 先读取冰块库存
+        iceAmount := d.GetIceAmount()
+        if iceAmount <= 50{
+            if err := d.RefillIce(); err != nil{
+                return nil, fmt.Errorf("refill: %w", err)
+            }
+        }
+        // 先写取冰量，再下发取冰指令
+        if err := d.writeU16(iceMakerAmountOffset, 50); err != nil {
+            return nil, fmt.Errorf("write amount: %w", err)
+        }
+        if err := d.writeU16(iceMakerCommandOffset, 3); err != nil {
+            return nil, fmt.Errorf("write command: %w", err)
+        }
+        // 等待复位
+        if err := d.waitIdleAndReset(); err != nil { return nil, err }
+        // 检查取冰是否成功
+        newAmount := d.GetIceAmount()
+        if newAmount != maxInt(iceAmount-50, 0) {
+            return nil, fmt.Errorf("dispense failed")
+        }
+        // 取冰完成后，返回取冰结果
+        return &ExecutionResult{
+            Message:       "DONE",
+            InventoryJson: fmt.Sprintf(`{"ice_maker_stock": %d}`, newAmount),
+        }, nil
+    case "ICEMAKER:MUCH":
+        // 先读取冰块库存
+        iceAmount := d.GetIceAmount()
+        if iceAmount <= 100{
+            if err := d.RefillIce(); err != nil{
+                return nil, fmt.Errorf("refill: %w", err)
+            }
+        }
+        // 先写取冰量，再下发取冰指令
+        if err := d.writeU16(iceMakerAmountOffset, 70); err != nil {
+            return nil, fmt.Errorf("write amount: %w", err)
+        }
+        if err := d.writeU16(iceMakerCommandOffset, 3); err != nil {
+            return nil, fmt.Errorf("write command: %w", err)
+        }
+        // 等待复位
+        if err := d.waitIdleAndReset(); err != nil { return nil, err }
+        // 检查取冰是否成功
+        newAmount := d.GetIceAmount()
+        if newAmount != maxInt(iceAmount-70, 0) {
+            return nil, fmt.Errorf("dispense failed")
+        }
+        // 取冰完成后，返回取冰结果
+        return &ExecutionResult{
+            Message:       "DONE",
+            InventoryJson: fmt.Sprintf(`{"ice_maker_stock": %d}`, newAmount),
+        }, nil
+    default:
+        return nil, fmt.Errorf("unknown command: %s", command)
+    }
+}
+
+// maxInt 返回两个整数的较大值
+func maxInt(a, b int) int {
+    if a > b { return a }
+    return b
+}
+
+// --- 简化的读写与等待辅助 ---
+func (d *IceMakerDriver) readU16(offset int) (uint16, error) {
+    buf := make([]byte, 2)
+    if err := d.client.AGReadDB(iceMakerDBNumber, offset, 2, buf); err != nil {
+        return 0, fmt.Errorf("read db1@%d: %w", offset, err)
+    }
+    var h gos7.Helper
+    var v uint16
+    h.GetValueAt(buf, 0, &v)
+    return v, nil
+}
+
+func (d *IceMakerDriver) writeU16(offset int, v uint16) error {
+    buf := make([]byte, 2)
+    var h gos7.Helper
+    h.SetValueAt(buf, 0, v)
+    if err := d.client.AGWriteDB(iceMakerDBNumber, offset, 2, buf); err != nil {
+        return fmt.Errorf("write db1@%d: %w", offset, err)
+    }
+    return nil
+}
+
+func (d *IceMakerDriver) waitIdleAndReset() error {
+    for {
+        status := d.getIceMakerStatus()
+        cmd, err := d.readU16(iceMakerCommandOffset)
+        if err != nil { return fmt.Errorf("read cmd: %w", err) }
+        if status == 0 && cmd == 0 { return nil }
+        time.Sleep(time.Second)
+    }
 }

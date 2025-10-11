@@ -37,7 +37,7 @@ if not logger.handlers:
 
 # -------------------- 1. 设备设置
 GRINDER_HOST = "localhost" # 连接磨粉机的IP地址
-GRINDER_PORT = 502
+GRINDER_PORT = 5021
 COFFEE_MACHINE_HOST = "localhost" # 连接咖啡机的IP地址
 COFFEE_MACHINE_PORT = 8888
 
