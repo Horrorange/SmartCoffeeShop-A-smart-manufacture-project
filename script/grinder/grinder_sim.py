@@ -6,7 +6,7 @@ Used to simulate the grinder, using modbus TCP
 
 import time
 import random
-from pyModbusTCP.server import ModbusServer, DataBank
+from pyModbusTCP.server import ModbusServer
 import logging
 
 # 设置logging
@@ -41,73 +41,64 @@ ERROR_CODE_REG = 3  # error code register
 # 0: 无故障
 # ----------
 
+def grind():
+    logging.debug("开始磨粉")
+    server.data_bank.set_holding_registers(STATUS_REG, [1]) 
+    current_bean_level = server.data_bank.get_holding_registers(BEAN_LEVEL_REG, 1)[0]
+
+    # 判断豆量是否大于10
+    if current_bean_level < 10:
+        logging.error("豆量不足！")
+        server.data_bank.set_holding_registers(STATUS_REG, [2])
+        server.data_bank.set_holding_registers(ERROR_CODE_REG, [1])
+        return
+    else:
+        logging.debug("豆量充足，开始磨粉")
+        current_bean_level = current_bean_level - random.randint(5, 10)
+        time.sleep(5)
+        server.data_bank.set_holding_registers(BEAN_LEVEL_REG, [current_bean_level])
+        logging.debug("磨粉完成，当前豆量: %d%%", current_bean_level)
+        server.data_bank.set_holding_registers(STATUS_REG, [0])
+
+def add_bean():
+    logging.debug("补充豆子")
+    server.data_bank.set_holding_registers(STATUS_REG, [1])
+    time.sleep(2)
+    server.data_bank.set_holding_registers(STATUS_REG, [0])
+    server.data_bank.set_holding_registers(BEAN_LEVEL_REG, [100])
+    server.data_bank.set_holding_registers(ERROR_CODE_REG, [0])
+
+    logging.debug("补充豆子完成")
+
 # 创建server，0.0.0.0 表示监听所有IP地址, 502是 ModBus TCP的默认端口
 server = ModbusServer(host="0.0.0.0", port=502, no_block = True)
-logging.debug("Modbus Server starting...")
+logging.debug("磨粉机开始运行")
 
 try:
     # 启动服务
     server.start()
-    logging.debug("Modbus Server is online")
+    logging.debug("磨粉机已启动")
 
     # 初始化状态
     server.data_bank.set_holding_registers(STATUS_REG, [0])       
     server.data_bank.set_holding_registers(BEAN_LEVEL_REG, [100]) 
     server.data_bank.set_holding_registers(ERROR_CODE_REG, [0])   
-    logging.debug("Grinder initial state: Idle, Bean level: 100%, No Error.")
+    logging.debug("磨粉机初始状态: 空闲, 豆量: 100%, 无故障.")
 
 
     while True:
         # 读取CMD_REG的值，判断是否有命令写入，get方法返回的是一个列表
         command = server.data_bank.get_holding_registers(CMD_REG, 1)[0]
-
         if command == 1:
-            logging.debug("Start grinding...")
-
-            # 重置CMD_REG
-            server.data_bank.set_holding_registers(CMD_REG, [0])
-            # 获取当前豆量
-            current_bean_level = server.data_bank.get_holding_registers(BEAN_LEVEL_REG, 1)[0]
-
-            # 报错：咖啡豆不足
-            if current_bean_level < 10:
-                logging.error("Bean level is too low!")
-                server.data_bank.set_holding_registers(STATUS_REG, [2])
-                server.data_bank.set_holding_registers(ERROR_CODE_REG, [1])
-            else:
-                # 正常磨粉
-                server.data_bank.set_holding_registers(STATUS_REG, [1])
-                server.data_bank.set_holding_registers(ERROR_CODE_REG, [0])
-                logging.debug("Grinder status: Grinding")
-
-                # 每次循环的磨粉时间
-                time.sleep(5)
-
-                # 更新豆量
-                new_bean_level = current_bean_level - random.randint(5, 10)
-                server.data_bank.set_holding_registers(BEAN_LEVEL_REG, [new_bean_level])
-
-                # 设置状态为空闲
-                server.data_bank.set_holding_registers(STATUS_REG, [0])
-                logging.debug(f"Grinding complete. New bean level: {new_bean_level}%.")
-                logging.debug("Grinder status: Idle.")
-
+            grind()
         elif command == 2:
-            logging.debug("Add bean...")
-            # 重置CMD_REG
-            server.data_bank.set_holding_registers(CMD_REG, [0])
-            # 延迟2秒
-            time.sleep(2)
-            server.data_bank.set_holding_registers(BEAN_LEVEL_REG, [100])
-            server.data_bank.set_holding_registers(ERROR_CODE_REG, [0])
-            logging.debug(f"Add bean complete. Bean level: {server.data_bank.get_holding_registers(BEAN_LEVEL_REG, 1)[0]}%.")
-
+            add_bean()
         # 循环时间
+        server.data_bank.set_holding_registers(CMD_REG,[0])
         time.sleep(0.5)
 
 # 异常处理
 except Exception as e:
-    logging.error(f"Error:{e}")
-    logging.error("Shutting down the Modbus server...")
+    logging.error(f"错误:{e}")
     server.stop()
-    logging.error("Server is offline")
+    logging.error("服务关闭")
