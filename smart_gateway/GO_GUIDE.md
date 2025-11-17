@@ -209,3 +209,17 @@ HTTP 服务固定监听 `:9090`。
 - `github.com/goburrow/modbus`（Modbus TCP 客户端）
 
 如需进一步统一或扩展驱动（例如增加状态字段、引入配置文件、完善日志与测试），可在此文档基础上迭代。
+## 5. 流水线模式（接入 gateway 实机）
+
+- 入口：`cmd/pipeline_demo/main.go`
+- 说明：从数据库拉取 `pending` 订单，经由 `gateway` 的真实设备驱动执行四步工序，结果写回数据库；未配置 DB/AMQP 时使用内存实现演示。
+
+```powershell
+cd smart_gateway
+go run cmd\pipeline_demo\main.go
+```
+
+- 设备环境变量：沿用 `COFFEE_HOST/COFFEE_PORT`、`GRINDER_HOST/GRINDER_PORT`、`ICE_HOST/ICE_RACK/ICE_SLOT`、`MQTT_HOST/MQTT_PORT`
+- 流水线参数：`ICE_MIN_STOCK`（默认 200）、`ICE_DISPENSE_AMOUNT`（默认 100）
+- 数据库配置：`DB_DRIVER`、`DB_DSN`
+- 队列配置：`AMQP_URL`、`AMQP_QUEUE_ORDERS`、`AMQP_QUEUE_COMPLETED`

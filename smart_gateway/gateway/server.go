@@ -28,6 +28,11 @@ func New(cfg Config) *Gateway {
     return g
 }
 
+func (g *Gateway) Grinder() *Grinder { return g.grinder }
+func (g *Gateway) Coffee() *CoffeeMachine { return g.coffee }
+func (g *Gateway) Ice() *IceMaker { return g.ice }
+func (g *Gateway) Robot() *DeliveryRobot { return g.robot }
+
 // HandleHTTP 接收统一JSON指令并分发至具体设备
 func (g *Gateway) HandleHTTP(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {

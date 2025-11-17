@@ -81,7 +81,7 @@ def on_connect(client, userdata, flags, rc):
     else:
         logging.error(f"连接失败, 错误码: {rc}")
 
-def on_message(client, msg):
+def on_message(client, userdata, msg):
     '''
     当客户端收到MQTT消息时的回调函数
     当客户端订阅的话题收到消息时调用
