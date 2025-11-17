@@ -52,6 +52,6 @@ func (d *DeliveryRobot) Deliver(coffeeType string, needIce bool, table int) erro
     case <-ack:
         return nil
     case <-time.After(3 * time.Second):
-        return nil
+        return fmt.Errorf("deliver_timeout")
     }
 }

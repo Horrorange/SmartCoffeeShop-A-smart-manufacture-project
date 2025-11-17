@@ -15,13 +15,17 @@ type Gateway struct {
 }
 
 func New(cfg Config) *Gateway {
-    return &Gateway{
+    g := &Gateway{
         cfg: cfg,
         coffee: &CoffeeMachine{Host: cfg.CoffeeHost, Port: cfg.CoffeePort},
         grinder: &Grinder{Host: cfg.GrinderHost, Port: cfg.GrinderPort},
         ice: &IceMaker{Host: cfg.IceHost, Rack: cfg.IceRack, Slot: cfg.IceSlot},
         robot: &DeliveryRobot{Host: cfg.MqttHost, Port: cfg.MqttPort},
     }
+    if g.grinder.Port == 502 {
+        g.grinder.Port = 5021
+    }
+    return g
 }
 
 // HandleHTTP 接收统一JSON指令并分发至具体设备
