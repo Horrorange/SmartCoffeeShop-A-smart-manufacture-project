@@ -1,6 +1,6 @@
-# Smart Gateway（Go）运行指南与未来开发文档
+# Smart Gateway（Go）运行指南与详细说明
 
-本指南面向 Windows 用户，详细说明 `smart_gateway` 模块及其 `pkg/drivers` 下各 Go 驱动的运行方法，并给出后续开发规范与建议。
+本指南面向 Windows 用户，说明 `smart_gateway` 模块的实际架构、运行方式、统一指令接口与联调方法，并提供常见故障排查与扩展建议。
 
 ---
 
@@ -16,16 +16,15 @@
 ## 2. 代码结构与核心概念
 
 - `smart_gateway/`（Go 模块根目录）
-  - `main.go`：入口程序，演示如何调用驱动并打印设备状态
-  - `pkg/drivers/`：驱动实现与公共接口
-    - `interface.go`：统一设备接口与模型
-      - `type Task struct { Command string; Params map[string]interface{} }`
-      - `type DeviceStatus struct { IsIdle bool; ErrorCode int; Inventory map[string]int }`
-      - `type Device interface { Connect() error; Disconnect() error; GetStatus() (DeviceStatus, error); ExecuteTask(task Task) error }`
-    - `modbus_driver.go`：磨豆机（Modbus TCP）示例/实现
-    - `tcp_driver.go` / `coffeemachine_driver.go`：咖啡机（TCP）示例/实现
-    - `s7_driver.go`：制冰机（Siemens S7）实现，使用 `github.com/robinson/gos7`
-    - `mqtt_driver.go`：送餐机器人（MQTT 客户端）实现，使用 `github.com/eclipse/paho.mqtt.golang`
+  - `cmd/main.go`：HTTP 服务入口，暴露统一端点 `POST /cmd`
+  - `cmd/demo/main.go`：示例客户端，按序调用 `/cmd`
+  - `gateway/`：设备适配与统一调度
+    - `server.go`：`Gateway` 聚合器与 HTTP 处理逻辑
+    - `types.go`：配置结构 `Config`、统一指令 `UnifiedCommand`、响应 `Result`
+    - `grinder.go`：磨豆机（Modbus TCP）适配
+    - `coffee.go`：咖啡机（TCP）适配
+    - `ice.go`：制冰机（S7）适配（`gos7`）
+    - `robot.go`：送餐机器人（MQTT 客户端）适配
 
 ---
 
@@ -57,9 +56,14 @@ pip install -r requirements.txt
 
 ```powershell
 cd smart_gateway
-go build ./pkg/drivers   # 先确保驱动包可编译
-go build .               # 构建可执行文件 smartgateway.exe
-.\n+smartgateway.exe         # 运行（或使用 go run .）
+go mod tidy
+go run cmd\main.go   # 启动 HTTP 服务（端口 9090）
+```
+
+另：示例客户端（需服务已启动）
+
+```powershell
+go run cmd\demo\main.go
 ```
 
 注意：PowerShell 不支持 `&&` 作为语句连接符，请逐条执行命令。
@@ -95,35 +99,24 @@ docker compose -f script\docker_sim\docker_compose.yml up -d
 
 ---
 
-## 6. 各驱动使用说明
+## 6. 统一端点与设备适配
 
-### 6.1 磨豆机（Modbus TCP）
+统一端点：`POST http://localhost:9090/cmd`
 
-- 驱动类型：`GrinderModbusDriver`
-- 常用参数：host、port
-- 常用任务（示例）：
-  - `Task{ Command: "GRIND", Params: map[string]interface{}{ "grams": 10 } }`
-- 状态读取：寄存器映射见模拟器脚本；`DeviceStatus.Inventory["BEANS"]` 可表示豆量等。
+请求体示例：
 
-### 6.2 咖啡机（TCP）
+```json
+{ "device": "grinder", "action": "grind" }
+{ "device": "coffeemachine", "action": "make", "coffee_type": "LATTE" }
+{ "device": "ice_maker", "action": "produce", "ice_amount": 500 }
+{ "device": "ice_maker", "action": "dispense", "ice_amount": 200 }
+{ "device": "delivery_robots", "action": "deliver", "coffee_type": "LATTE", "need_ice": true, "table_number": 8 }
+```
 
-- 驱动类型：`CoffeeTCPDriver`
-- 常用参数：host、port
-- 常用任务（示例）：
-  - `Task{ Command: "MAKE_COFFEE", Params: map[string]interface{}{ "type": "Americano" } }`
-- 状态读取：包含 `IsIdle` / `ErrorCode` / `Inventory`（如水量、杯数等）。
+响应：
 
-### 6.3 制冰机（S7）
-
-- 驱动类型：`IceMakerS7Driver`
-- 构造函数：`NewIceMakerS7Driver(host, port, rack, slot)`
-- 内存布局（DB1）：
-  - 读取：`stock@0 (INT)`、`status@2 (INT)`
-  - 写入：`command@4 (INT)`、`amount@6 (INT)`
-- 任务（示例）：
-  - `Task{ Command: "MAKE_ICE" }` → 写入 `command=1`
-  - `Task{ Command: "DISPENSE_ICE", Params: { "amount_grams": 50 } }` → 先写入 `amount=50`，再写入 `command=3`
-- 实现要点：使用 `gos7.Helper.SetValueAt/GetValueAt` 编解码 `uint16`；读写使用 `client.AGReadDB/AGWriteDB`；连接使用 `handler.Connect/Close`。
+- 成功：`200 {"ok":true,"message":"..."}`
+- 失败：`400 {"ok":false,"message":"..."}`（例如 `dial tcp ... refused`、`grind_timeout`、`deliver_timeout`）
 
 ### 6.4 送餐机器人（MQTT 客户端）
 
@@ -143,40 +136,34 @@ docker compose -f script\docker_sim\docker_compose.yml up -d
 
 ---
 
-## 7. 在 `main.go` 中使用驱动（示例）
+## 7. 配置项（环境变量）
 
-```go
-package main
+HTTP 服务固定监听 `:9090`。
 
-import (
-    "smartgateway/pkg/drivers"
-)
+可用环境变量（含默认）：
 
-func main() {
-    // 以制冰机为例
-    ice := drivers.NewIceMakerS7Driver("localhost", "102", 0, 2)
-    if err := ice.Connect(); err != nil { panic(err) }
-    defer ice.Disconnect()
-
-    status, err := ice.GetStatus()
-    if err != nil { panic(err) }
-    _ = status
-
-    // 执行任务
-    task := drivers.Task{ Command: "MAKE_ICE", Params: map[string]interface{}{} }
-    if err := ice.ExecuteTask(task); err != nil { panic(err) }
-}
-```
+- `COFFEE_HOST=localhost`
+- `COFFEE_PORT=8888`
+- `GRINDER_HOST=localhost`
+- `GRINDER_PORT=5021`（若设置为 `502`，服务会自动回退到 `5021`）
+- `ICE_HOST=localhost`
+- `ICE_RACK=0`
+- `ICE_SLOT=2`
+- `MQTT_HOST=localhost`
+- `MQTT_PORT=1883`
 
 ---
 
 ## 8. 常见问题与故障排查
 
-- PowerShell 命令拼接：不要使用 `&&`，请逐条执行。
-- 端口占用：确保模拟器/容器未重复启动；关闭冲突进程后重试。
+- 连接被拒绝（`dial tcp [::1]:502 ... refused`）：
+  - 请确认磨豆机模拟器已在主机端口 `5021/5022` 映射到容器 `502`；
+  - 未使用 Docker 时，将 `GRINDER_PORT` 设置为 `5021`；
+  - Windows 上 `localhost` 解析为 `::1`（IPv6），如网络策略限制可改为 `127.0.0.1`。
+- 配送超时：`robot.go` 在 3s 内未收到 `test/delivery_robot/status` 回执将返回 `deliver_timeout`；检查 MQTT Broker（`1883`）与模拟器是否在线。
+- PowerShell 命令：不要使用 `&&`，逐条执行。
 - 依赖缺失：在 `smart_gateway` 下执行 `go mod tidy`；Python 依赖用 `pip install -r requirements.txt`。
-- MQTT 无回执：确认 `statusTopic` 与模拟器发送的 `order_id` 一致；Broker 已在 `1883` 端口监听；`delivery_robots` 服务已正确连接。
-- S7 读写失败：确认 `rack/slot`、DB 区块号与偏移；网络连通性与端口 `102`；尝试增大 `handler.Timeout`。
+- S7 读写失败：确认 `rack/slot`、DB 区块号与偏移；网络连通性与端口 `102`；可适当增大 `handler.Timeout`。
 
 ---
 
@@ -222,3 +209,17 @@ func main() {
 - `github.com/goburrow/modbus`（Modbus TCP 客户端）
 
 如需进一步统一或扩展驱动（例如增加状态字段、引入配置文件、完善日志与测试），可在此文档基础上迭代。
+## 5. 流水线模式（接入 gateway 实机）
+
+- 入口：`cmd/pipeline_demo/main.go`
+- 说明：从数据库拉取 `pending` 订单，经由 `gateway` 的真实设备驱动执行四步工序，结果写回数据库；未配置 DB/AMQP 时使用内存实现演示。
+
+```powershell
+cd smart_gateway
+go run cmd\pipeline_demo\main.go
+```
+
+- 设备环境变量：沿用 `COFFEE_HOST/COFFEE_PORT`、`GRINDER_HOST/GRINDER_PORT`、`ICE_HOST/ICE_RACK/ICE_SLOT`、`MQTT_HOST/MQTT_PORT`
+- 流水线参数：`ICE_MIN_STOCK`（默认 200）、`ICE_DISPENSE_AMOUNT`（默认 100）
+- 数据库配置：`DB_DRIVER`、`DB_DSN`
+- 队列配置：`AMQP_URL`、`AMQP_QUEUE_ORDERS`、`AMQP_QUEUE_COMPLETED`

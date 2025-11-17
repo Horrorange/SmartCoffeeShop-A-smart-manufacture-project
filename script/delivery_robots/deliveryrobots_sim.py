@@ -12,7 +12,7 @@ from colorlog import ColoredFormatter
 import random
 
 # ---------------- 设置logger格式
-logger = logging.getLogger("deliveryrobots_sim")
+logger = logging.getLogger("delivery_robot")
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 formatter = ColoredFormatter(
@@ -28,12 +28,10 @@ formatter = ColoredFormatter(
 )
 handler.setFormatter(formatter)
 
-if not logger.handlers:
-    logger.addHandler(handler)
-
 # ---------------- 配置服务器
 # 在容器网络中应使用服务名访问Broker，支持环境变量覆盖
-MQTT_BROKER_HOST = os.getenv("MQTT_HOST", "mqtt_broker")
+# 本地运行默认使用 localhost，避免未设置环境变量时的连接失败
+MQTT_BROKER_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
 COMMAND_TOPIC = "test/delivery_robot/command"   # 命令话题，用于接收订单指令
 STATUS_TOPIC = "test/delivery_robot/status"     # 状态话题，用于发送配送状态
@@ -47,35 +45,28 @@ STATUS_TOPIC = "test/delivery_robot/status"     # 状态话题，用于发送配
 # -----------------------------------------------------
 
 # ---------------- 模拟配送
-def simulate_delivery(order_details: dict):
+def simulate_delivery(table_number: int):
     """
     模拟配送，根据订单详情更新配送状态
-    输入：order_details (dict) - 订单详情，包含订单ID、咖啡类型、是否需要冰、取餐点
-    输入举例：{"order_id": 001, "coffee_type": "MATCHA LATTE", "need_ice": True, "table_number": 1}
+    输入：table_number (int) - 桌号
+    输入举例：1
     """
     # 解析输入
-    order_id = order_details.get("order_id", "N/A")
-    coffee_type = order_details.get("coffee_type", "Unknown Coffee")
-    needs_ice = order_details.get("need_ice", False)
-    destination_table = order_details.get("table_number", "Bar")
+    destination_table = f"Table{table_number}"
 
-    # 冰块逻辑
-    ice_status_str = "(加冰)" if needs_ice else "(不加冰)"
-    display_coffee_name = f"{coffee_type} {ice_status_str}"
 
     # 开始模拟配送过程
-    logger.info(f"收到任务：订单 [{order_id}] 配送 {display_coffee_name} 到 {destination_table}")
-
-    logger.info(f"- 订单 [{order_id}] - 正在前往取餐点 ...")
+    logging.info(f"收到任务：配送到 {destination_table}")
+    logging.info(f"- 正在前往取餐点 ...")
     time.sleep(random.randint(2,4))
-    logger.info(f"- 订单 [{order_id}] - 已取到 {display_coffee_name}")
-    logger.info(f"- 订单 [{order_id}] - 正在前往 {destination_table} 号桌 ...")
+    logging.info(f"-已取到 咖啡")
+    logging.info(f"-正在前往 {destination_table} 号桌 ...")    
     time.sleep(random.randint(3,5))
-    logger.info(f"- 订单 [{order_id}] - 已送达 {display_coffee_name} 到 {destination_table} 号桌")
-    logger.info(f"- 订单 [{order_id}] - 配送完成, 正在返回...")
+    logging.info(f"-已送达 咖啡 到 {destination_table} 号桌")
+    logging.info(f"-配送完成, 正在返回...")
     time.sleep(random.randint(2,5))
-    logger.info(f"- 订单 [{order_id}] - 已返回, 进入待命状态")
-    return display_coffee_name
+    logging.info(f"已返回, 进入待命状态")
+    return "Done"
 
 def on_connect(client, userdata, flags, rc):
     '''
@@ -85,10 +76,10 @@ def on_connect(client, userdata, flags, rc):
     rc=1,代表连接失败, 服务器拒绝连接
     '''
     if rc == 0:
-        logger.info("已成功连接到MQTT代理")
+        logging.info("已成功连接到MQTT代理")
         client.subscribe(COMMAND_TOPIC, qos=1)
     else:
-        logger.error(f"连接失败, 错误码: {rc}")
+        logging.error(f"连接失败, 错误码: {rc}")
 
 def on_message(client, userdata, msg):
     '''
@@ -98,28 +89,28 @@ def on_message(client, userdata, msg):
     try:
         # 从消息中解码收到的信息
         payload_str = msg.payload.decode('utf-8')
-        logger.info(f"从话题 {msg.topic} 收到消息: {payload_str}")
+        logging.info(f"从话题 {msg.topic} 收到消息: {payload_str}")
 
         # 解析订单详情，开始配送流程
         order_details = json.loads(payload_str)
-        coffee_name = simulate_delivery(order_details)
-        result = "DELIVERY_COMPLETE"
+        status = simulate_delivery(order_details.get("table_number", 0))
+        result = "DELIVERY_COMPLETE" if status == "Done" else "DELIVERY_FAILED"
 
         # 准备返回的数据
         status_payload = json.dumps({
             "order_id": order_details.get("order_id", "N/A"),
             "status": result,
-            "coffee_name": coffee_name,
+            "table_number": order_details.get("table_number", "N/A"),
         })
 
         # 发送配送状态到状态话题
         client.publish(STATUS_TOPIC, status_payload)
-        logger.info(f"已发送配送状态到话题 {STATUS_TOPIC}: {status_payload}")
+        logging.info(f"已发送配送状态到话题 {STATUS_TOPIC}: {status_payload}")
     
     except json.JSONDecodeError:
-        logger.error(f"从话题 {msg.topic} 收到的消息不是有效的JSON格式: {payload_str}")
+        logging.error(f"从话题 {msg.topic} 收到的消息不是有效的JSON格式: {payload_str}")
     except Exception as e:
-        logger.error(f"处理消息时发生错误: {e}")
+        logging.error(f"处理消息时发生错误: {e}")
 
 def main():
     # 初始化MQTT客户端
@@ -127,19 +118,19 @@ def main():
     client.on_connect = on_connect  # 连接成功回调
     client.on_message = on_message  # 收到消息回调
 
-    logger.info("正在连接到MQTT Broker...")
+    logging.info("正在连接到MQTT Broker...")
     # 连接到MQTT代理，增加重试以等待Broker就绪
     max_attempts = 5
     for attempt in range(1, max_attempts + 1):
         try:
             client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
-            logger.info("已成功连接到MQTT Broker")
+            logging.info("已成功连接到MQTT Broker")
             break
         except Exception as e:
             if attempt == max_attempts:
-                logger.error(f"连接MQTT Broker失败: {e}")
+                logging.error(f"连接MQTT Broker失败: {e}")
                 return
-            logger.warning(f"连接失败，第{attempt}次重试，原因: {e}")
+            logging.warning(f"连接失败，第{attempt}次重试，原因: {e}")
             time.sleep(2)
     
     # 保持连接并处理消息

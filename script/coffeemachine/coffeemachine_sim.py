@@ -12,8 +12,7 @@ import random
 from colorlog import ColoredFormatter
 import threading
 
-# -------------------- 0. 基本设置
-# 为进程单独设置对应的logger
+
 logger = logging.getLogger("coffeemachine_sim")
 logger.setLevel(logging.DEBUG)
 # 用于输出，后续可以扩展至网络传输
@@ -31,7 +30,6 @@ formatter = ColoredFormatter(
     },
 )
 handler.setFormatter(formatter)
-
 if not logger.handlers:
     logger.addHandler(handler)
 
@@ -40,7 +38,7 @@ HOST = '0.0.0.0'
 PORT = 8888
 
 # -------------------- 2. 库存与食谱设置
-MAX_STORAGE = 50 # 最大库存为50
+MAX_STORAGE = 20 # 最大库存为50
 inventory = {
     "MILK": MAX_STORAGE,
     "OAT_MILK": MAX_STORAGE,
@@ -48,8 +46,7 @@ inventory = {
     "CHOCOLATE_SAUCE": MAX_STORAGE,
     "CARAMEL_SYRUP": MAX_STORAGE,
 }
-# 线程锁， 防止多线程访问时出现问题
-inventory_lock = threading.Lock()
+
 
 # 食谱记录所有种类咖啡所需要消耗的原材料
 recipes = {
@@ -66,33 +63,31 @@ recipes = {
 }
 VALID_COFFEES = list(recipes.keys())
 
+
 def check_and_custom_ingredients(coffee_type):
     """
     检查咖啡的原料是否充足，如果充足则消耗，不充足则返回False和缺少的原材料列表
     """
     recipe = recipes.get(coffee_type)
-    if recipe is None:
-        logger.error(f"Unknown coffee type: {coffee_type}")
-        return False, []
-    
-    with inventory_lock:
-        required_ingredients = []
-        # 首先检查所有原料是否充足
-        for ingredient, amount in recipe.items():
-            if inventory[ingredient] < amount:
-                logger.error(f"Not enough {ingredient} for {coffee_type}")
-                required_ingredients.append(ingredient)
+
+    required_ingredients = [] # 缺少的原材料列表
+    # 首先检查所有原料是否充足
+    for ingredient, amount in recipe.items():
+        if inventory[ingredient] < amount:
+            logger.error(f"原料 {ingredient} 不足，需要 {amount} 单位，当前库存 {inventory[ingredient]} 单位")
+            required_ingredients.append(ingredient)
         
         # 如果有缺少的原料，返回False和缺少的原料列表
         if required_ingredients:
-            return False, required_ingredients
+            return required_ingredients
 
         # 如果所有原料都充足，则消耗原料
         for ingredient, amount in recipe.items():
             inventory[ingredient] -= amount
 
-        logger.info(f"Successfully made {coffee_type}, current inventory: {inventory}")
-        return True, []
+        return []
+
+
 
 # ------------------------------
 # 自定义报文操作逻辑
@@ -107,85 +102,96 @@ def handle_client(conn, addr):
     """
     处理客户端连接，接收客户端发送的咖啡类型，检查原料是否充足，充足则制作咖啡，不充足则返回错误信息
     """
-    logger.info(f"Accepted connection from {addr}.")
-    with conn:
-        while True:
+    logger.info(f"接收到来自 {addr} 的连接请求")
+    with conn:  # 确保连接在处理完成后关闭
+        while True: # 持续监听客户端请求
             try:
-
-                data = conn.recv(1024)
+                data = conn.recv(1024)  # 接收客户端发送的消息
                 if not data:
-                    logger.warning(f"Client {addr} disconnected.")
+                    logger.warning(f"客户端 {addr} 主动断开连接") # 客户端主动断开连接
                     break
 
-                message = data.decode().strip().upper()
-                logger.debug(f"Received command: {message}")
+                message = data.decode().strip().upper() # 解码并转换为大写
+                logger.debug(f"客户端 {addr} 发送指令: {message}") # 记录接收到的指令
                 
                 # ----------------- 协议解析
                 parts = message.split(":", 1)
                 command = parts[0]
                 payload = parts[1] if len(parts) > 1 else ""
 
+
+
+
                 if command == "MAKE":
                     coffee_type = payload
-                    if coffee_type in VALID_COFFEES:
-                        can_make, missing_ingredients = check_and_custom_ingredients(coffee_type)
-                        if can_make:
+                    if coffee_type not in VALID_COFFEES:
+                        conn.sendall(b"ERROR:UNKNOWN_COFFEE_TYPE\n")
+                        logger.error(f"未知咖啡类型: {coffee_type}")
+                        continue
+                    else:
+                        missing_ingredients = check_and_custom_ingredients(coffee_type)
+                        if not missing_ingredients:
                             conn.sendall(b"ACK:MAKE\n")
-                            logger.info(f"Command acknowledged. Starting to make {coffee_type}.")
+                            logger.info(f"开始制作 {coffee_type}")
 
                             # 模拟制作时间
-                            making_time = random.randint(5, 10)
-                            time.sleep(making_time)
+                            time.sleep(random.randint(5,10))
 
                             conn.sendall(b"DONE:SUCCESS\n")
-                            logger.info(f"Sucessfully made {coffee_type} in {making_time}.")
+                            logger.info(f"成功制作 {coffee_type}")
                         else:
                             error_message = f"ERROR:INSUFFICIENT_INGREDIENT:{', '.join(missing_ingredients)}"
                             conn.sendall(error_message.encode('utf-8') + b"\n")
-                            logger.error(f"Failed to make {coffee_type}. Missing ingredients: {', '.join(missing_ingredients)}")
-                    else:
-                        conn.sendall(b"ERROR:UNKNOWN_COFFEE_TYPE\n")
-                        logger.error(f"Invalid coffee type requested: {coffee_type}")
+                            logger.error(f"制作 {coffee_type} 失败，缺少原料: {', '.join(missing_ingredients)}")
+
+
+
+
 
                 elif command == "REFILL":
                     ingredient_to_refill = payload
-                    with inventory_lock:
-                        if ingredient_to_refill == "ALL":
-                            for ingredient in inventory:
-                                inventory[ingredient] = MAX_STORAGE
-                            logger.info("All ingredients have been refilled.")
-                            conn.sendall(b"ACK:REFILL_SUCCESS:ALL\n")
-                        elif ingredient_to_refill in inventory:
-                            inventory[ingredient_to_refill] = MAX_STORAGE
-                            logger.info(f"{ingredient_to_refill} has been refilled.")
-                            conn.sendall(b"ACK:REFILL_SUCCESS:" + ingredient_to_refill.encode('utf-8') + b"\n")
-                        else:
-                            conn.sendall(b"ERROR:INVALID_INGREDIENT\n")
-                            logger.error(f"Invalid ingredient requested for refill: {ingredient_to_refill}")
-                
+
+                    if ingredient_to_refill == "ALL":
+                        for ingredient in inventory:
+                            inventory[ingredient] = MAX_STORAGE
+                        time.sleep(7)
+                        logger.info("所有原料已被补充")
+                        conn.sendall(b"ACK:REFILL_SUCCESS:ALL\n")
+                    
+                    elif ingredient_to_refill in inventory:
+                        inventory[ingredient_to_refill] = MAX_STORAGE
+                        time.sleep(3)
+                        logger.info(f"{ingredient_to_refill} 已被补充")
+                        conn.sendall(b"ACK:REFILL_SUCCESS:" + ingredient_to_refill.encode('utf-8') + b"\n")
+                    else:
+                        conn.sendall(b"ERROR:INVALID_INGREDIENT\n")
+                        logger.error(f"未知原料: {ingredient_to_refill}")
+
+
+
                 elif command == "STATUS" and payload == "INGREDIENTS":
-                        with inventory_lock:
-                            status_string = ",".join([f"{ingredient}={amount}" for ingredient, amount in inventory.items()])
-                        resp = f"STATUS:INGREDIENTS:{status_string}\n"
-                        conn.sendall(resp.encode('utf-8'))
-                        logger.info(f"Sent inventory status: {status_string}")
+                    status_string = ",".join([f"{ingredient}={amount}" for ingredient, amount in inventory.items()])
+                    resp = f"STATUS:INGREDIENTS:{status_string}\n"
+                    conn.sendall(resp.encode('utf-8'))
+                    logger.info(f"Sent inventory status: {status_string}")
                 
                 else:
                     conn.sendall(b"ERROR:UNKNOWN_COMMAND\n")
-                    logger.error(f"Unknown command format: '{message}'")
+                    logger.error(f"未知指令格式: '{message}'")
             
+
             except ConnectionResetError:
-                logger.error(f"Connection with {addr} was closed by the client.")
+                logger.error(f"客户端 {addr} 主动断开连接")
                 break
             except Exception as e:
-                logger.error(f"An unexpected error occurred with client {addr}: {e}")
+                logger.error(f"处理客户端 {addr} 时发生意外错误: {e}")
                 break
 
 def run_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.bind((HOST, PORT))
         server_socket.listen()
-        logger.info(f"Coffee Machine server listening on {HOST}:{PORT}")
+        logger.info(f"咖啡机器服务器已启动，监听端口 {PORT}")
 
         while True:
             conn, addr = server_socket.accept()

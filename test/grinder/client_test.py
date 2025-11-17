@@ -4,8 +4,8 @@ Last-modified: 2025-09-17
 ModBus Client test
 '''
 
+from re import S
 import time
-import argparse
 from pyModbusTCP.client import ModbusClient
 import logging
 
@@ -20,93 +20,72 @@ logging.basicConfig(
 CMD_REG = 0         # command register
 STATUS_REG = 1      # status register
 BEAN_LEVEL_REG = 2  # bean level register
-
-# 设定启动参数
-parser = argparse.ArgumentParser(description="ModBus Client Test")
-parser.add_argument("--host", type=str, default="localhost", help="ModBus server host IP")
-args = parser.parse_args()
-
+ERROR_CODE_REG = 3  # error code register
 # 读取IP地址
-SERVER_HOST = args.host
-SERVER_PORT = 502
+SERVER_HOST = "localhost"
+SERVER_PORT = 502  # 修正端口号，与模拟器保持一致
 
 # 连接Modbus服务
 client = ModbusClient(host=SERVER_HOST, port=SERVER_PORT, auto_open=False)
 connection_result = client.open()
 
-logging.debug(f"Modbus Client connected to {SERVER_HOST}:{SERVER_PORT}")
-
-# ---------------- 1. 读取当前状态
-logging.debug("--- Reading Input State ---")
-status_map = {0:"Idle", 1:"Grinding", 2:"Error"}
-# 从 STATUS_REG 开始读取 2 个寄存器
-regs = client.read_holding_registers(STATUS_REG, 2)
-
-if regs:
-    status, bean_level  = regs
-    logging.debug(f"Grinder status: {status_map.get(status, 'Unknown')}")
-    logging.debug(f"Bean level: {bean_level}%")
+if not connection_result:
+    logging.error(f"无法连接到 {SERVER_HOST}:{SERVER_PORT}")
+    exit(1)
     
-    # 检查磨豆机是否正在工作
-    if status == 1:  # 1表示正在磨粉
-        logging.warning("磨豆机已经被占用了，正在磨粉中...")
-        logging.info("程序停止运行")
-        client.close()
-        exit()
-else:
-    logging.error("Failed to read grinder status")
-    exit()
+logging.debug(f"成功连接到 {SERVER_HOST}:{SERVER_PORT}")
 
-# ---------------- 2. 发送启动命令
-logging.debug("--- Sending Start Command ---")
-
-is_ok = client.write_single_register(CMD_REG, 1)
-if is_ok:
-    logging.debug("Command [Start Grinding] sent sucessfully.")
-else:
-    logging.error("Failed to send command.")
-    exit()
-
-# ---------------- 3.监控磨粉状态
-# logging.debug("--- Monitoring Grinder ---")
-# while True:
-#     regs = client.read_holding_registers(STATUS_REG, 2)
-#     if regs:
-#         status, bean_level  = regs
-#         logging.debug(f"Grinder status: {status_map.get(status, 'Unknown')}")
-#         logging.debug(f"Bean level: {bean_level}%")
-#         if status != 1:
-#             logging.debug("Grinding completed.")
-#             break
-#     else:
-#         logging.error("Failed to read grinder status")
-#     time.sleep(1)
+def read_status():
+    '''
+    读取磨豆机状态
+    '''
+    try:
+        status = client.read_holding_registers(STATUS_REG, 2)[0]
+        bean_level = client.read_holding_registers(STATUS_REG, 2)[1]
+        return status, bean_level
+    except Exception as e:
+        logging.error(f"读取状态失败: {e}")
+        return None, None
 
 
 
-# ---------------- 4.输出最终状态
-logging.debug("--- Reading Final State ---")
-regs = client.read_holding_registers(STATUS_REG, 2)
-if regs:
-    status, bean_level  = regs
-    logging.debug(f"Grinder status: {status_map.get(status, 'Unknown')}")
-    logging.debug(f"Bean level: {bean_level}%")
-else:
-    logging.error("Failed to read grinder status")
+def grind():
+    '''
+    发送磨粉命令
+    '''
+    status, bean_level = read_status()
+    logging.debug("当前豆量: %d%%", bean_level)
+    logging.debug("当前状态: %d", status)
+    
 
-# ---------------- 5.补充豆子
-logging.debug("--- Add Bean ---")
+    if status == 2 or bean_level < 10:
+        logging.error("当前状态为故障，正在自动补豆")
+        client.write_single_register(CMD_REG, 2)
+        time.sleep(0.5)
+        status, bean_level = read_status()
+        while status != 0:
+            time.sleep(0.5)
+            status, bean_level = read_status()
+        logging.debug("自动补豆完成")
 
-is_ok = client.write_single_register(CMD_REG, 2)
-if is_ok:
-    logging.debug("Command [Add Bean] sent sucessfully.")
-else:
-    logging.error("Failed to send command.")
-    exit()
+    if status == 1:
+        logging.debug("当前状态为正在工作，等待完成")
+        status, bean_level = read_status()
+        while status != 0:
+            time.sleep(0.5)
+            status, bean_level = read_status()
+        logging.debug("当前工作完成，开始磨粉")
 
-# ---------------- 6.补充验证
-logging.debug("--- Add Bean Verification ---")
-bean_level = client.read_holding_registers(BEAN_LEVEL_REG, 1)[0]
-logging.debug(f"Bean level after add: {bean_level}%")
+    client.write_single_register(CMD_REG, 1)
+    time.sleep(0.5)
+    status, bean_level = read_status()
+    while status != 0:
+        time.sleep(0.5)
+        status, bean_level = read_status()
+    return status, bean_level
+
+
+for i in range(30):
+    grind()
 
 client.close()
