@@ -22,7 +22,7 @@ func New(cfg Config) *Gateway {
         ice: &IceMaker{Host: cfg.IceHost, Rack: cfg.IceRack, Slot: cfg.IceSlot},
         robot: &DeliveryRobot{Host: cfg.MqttHost, Port: cfg.MqttPort},
     }
-    if g.grinder.Port == 502 {
+    if g.grinder.Port == 502 && (g.grinder.Host == "localhost" || g.grinder.Host == "127.0.0.1") {
         g.grinder.Port = 5021
     }
     return g

@@ -68,7 +68,7 @@ def simulate_delivery(table_number: int):
     logging.info(f"已返回, 进入待命状态")
     return "Done"
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc, properties=None):
     '''
     连接到MQTT代理时的回调函数
     当客户端成功连接到MQTT代理时调用
@@ -91,21 +91,28 @@ def on_message(client, userdata, msg):
         payload_str = msg.payload.decode('utf-8')
         logging.info(f"从话题 {msg.topic} 收到消息: {payload_str}")
 
-        # 解析订单详情，开始配送流程
+        # 解析订单详情
         order_details = json.loads(payload_str)
-        status = simulate_delivery(order_details.get("table_number", 0))
-        result = "DELIVERY_COMPLETE" if status == "Done" else "DELIVERY_FAILED"
 
-        # 准备返回的数据
-        status_payload = json.dumps({
+        # 立即发送接收确认，便于上游快速得到ACK
+        ack_payload = json.dumps({
             "order_id": order_details.get("order_id", "N/A"),
-            "status": result,
+            "status": "RECEIVED",
             "table_number": order_details.get("table_number", "N/A"),
         })
+        client.publish(STATUS_TOPIC, ack_payload, qos=1)
+        logging.info(f"已发送接收确认到话题 {STATUS_TOPIC}: {ack_payload}")
 
-        # 发送配送状态到状态话题
-        client.publish(STATUS_TOPIC, status_payload)
-        logging.info(f"已发送配送状态到话题 {STATUS_TOPIC}: {status_payload}")
+        # 开始模拟配送流程并在完成后发送最终状态
+        status = simulate_delivery(order_details.get("table_number", 0))
+        final_result = "DELIVERY_COMPLETE" if status == "Done" else "DELIVERY_FAILED"
+        final_payload = json.dumps({
+            "order_id": order_details.get("order_id", "N/A"),
+            "status": final_result,
+            "table_number": order_details.get("table_number", "N/A"),
+        })
+        client.publish(STATUS_TOPIC, final_payload, qos=1)
+        logging.info(f"已发送配送完成到话题 {STATUS_TOPIC}: {final_payload}")
     
     except json.JSONDecodeError:
         logging.error(f"从话题 {msg.topic} 收到的消息不是有效的JSON格式: {payload_str}")
@@ -114,7 +121,7 @@ def on_message(client, userdata, msg):
 
 def main():
     # 初始化MQTT客户端
-    client = mqtt.Client(client_id="delivery_robot_sim")
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="delivery_robot_sim")
     client.on_connect = on_connect  # 连接成功回调
     client.on_message = on_message  # 收到消息回调
 
