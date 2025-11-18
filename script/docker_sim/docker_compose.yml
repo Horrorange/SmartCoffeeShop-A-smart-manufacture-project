@@ -5,18 +5,11 @@ services:
     build: ../grinder/
     container_name: grinder1
     ports:
-      - "5021:502"
+      - "502:502"
     networks:
       - coffee-net
 
-  # 1b. 磨豆机服务 (Modbus) - 实例2
-  grinder2:
-    build: ../grinder/
-    container_name: grinder2
-    ports:
-      - "5022:502"
-    networks:
-      - coffee-net
+  # 1b. 磨豆机服务 (Modbus) - 实例2（已移除，仅保留一台）
 
   # 2. 咖啡机服务 (自定义TCP)
   coffee_machine:
@@ -58,6 +51,38 @@ services:
       - "1883:1883" # MQTT标准端口
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    networks:
+      - coffee-net
+
+  gateway:
+    build: ../../smart_gateway/
+    container_name: gateway
+    environment:
+      - DB_TYPE=mysql
+      - PG_HOST=sh-cynosdbmysql-grp-rza6j9p0.sql.tencentcdb.com
+      - PG_PORT=21969
+      - PG_DB=smartshop
+      - PG_USER=dishman
+      - PG_PASS=password123@
+      - AMQP_URL=amqp://guest:guest@host.docker.internal:5672/
+      - AMQP_QUEUE_ORDERS=queue_orders
+      - AMQP_QUEUE_COMPLETED=queue_completed
+      - COFFEE_HOST=coffee_machine
+      - COFFEE_PORT=8888
+      - GRINDER_HOST=grinder1
+      - GRINDER_PORT=502
+      - ICE_HOST=ice_maker
+      - ICE_RACK=0
+      - ICE_SLOT=2
+      - MQTT_HOST=mqtt-broker
+      - MQTT_PORT=1883
+      - ICE_MIN_STOCK=200
+      - ICE_DISPENSE_AMOUNT=100
+    depends_on:
+      - grinder1
+      - coffee_machine
+      - ice_maker
+      - mqtt_broker
     networks:
       - coffee-net
 

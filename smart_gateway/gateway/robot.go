@@ -24,7 +24,7 @@ func (d *DeliveryRobot) Deliver(coffeeType string, needIce bool, table int) erro
     opts.SetAutoReconnect(true)
     opts.SetConnectionLostHandler(func(mqtt.Client, error) {})
     opts.SetOnConnectHandler(func(c mqtt.Client) {
-        st := c.Subscribe("test/delivery_robot/status", 0, func(_ mqtt.Client, _ mqtt.Message) {
+        st := c.Subscribe("test/delivery_robot/status", 1, func(_ mqtt.Client, _ mqtt.Message) {
             select { case ack <- struct{}{}: default: }
         })
         st.Wait()
@@ -43,6 +43,7 @@ func (d *DeliveryRobot) Deliver(coffeeType string, needIce bool, table int) erro
         "table_number": table,
     }
     b, _ := json.Marshal(payload)
+    fmt.Println("deliver_publish", string(b))
     pt := c.Publish("test/delivery_robot/command", 0, false, b)
     pt.Wait()
     if err := pt.Error(); err != nil {
@@ -50,8 +51,9 @@ func (d *DeliveryRobot) Deliver(coffeeType string, needIce bool, table int) erro
     }
     select {
     case <-ack:
+        fmt.Println("deliver_ack")
         return nil
-    case <-time.After(3 * time.Second):
+    case <-time.After(10 * time.Second):
         return fmt.Errorf("deliver_timeout")
     }
 }

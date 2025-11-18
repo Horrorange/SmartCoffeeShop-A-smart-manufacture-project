@@ -1,335 +1,114 @@
-# 🍵 Smart Coffee Shop - 智能咖啡店制造系统
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
-[![Modbus TCP](https://img.shields.io/badge/protocol-Modbus%20TCP-green.svg)](https://modbus.org/)
-
-一个基于工业物联网协议的智能咖啡店制造系统，模拟真实的咖啡制作流程，包含磨粉机、咖啡机和智能代理的完整协作。
-
-## 🎯 项目简介
-
-本项目模拟了一个完整的智能咖啡店制造系统，展示了工业4.0环境下设备间的协作模式：
-
-- **磨粉机模拟器** - 基于Modbus TCP协议的工业设备模拟
-- **咖啡机模拟器** - 基于自定义TCP协议的智能设备
-- **智能代理** - 边缘计算网关，协调设备间的通信和决策
-
-## ✨ 功能特性
-
-### 🔧 设备模拟
-- ✅ **磨粉机模拟器**：Modbus TCP服务器，支持磨粉控制、状态监控、豆量管理
-- ✅ **咖啡机模拟器**：TCP服务器，支持多种咖啡制作、原料管理、库存查询
-- ✅ **实时状态监控**：设备状态实时更新，支持空闲/工作/故障状态
-
-### 🤖 智能代理
-- ✅ **多协议通信**：同时支持Modbus TCP和自定义TCP协议
-- ✅ **本地决策**：边缘计算，无需云端即可完成订单处理
-- ✅ **原料检查**：智能检查库存，自动判断是否可以制作
-- ✅ **设备协调**：协调磨粉机和咖啡机的工作流程
-
-### ☕ 咖啡制作
-- ✅ **多种咖啡类型**：支持LATTE、CAPPUCCINO、ESPRESSO、AMERICANO等
-- ✅ **原料管理**：牛奶、燕麦奶、抹茶酱、巧克力酱、焦糖糖浆等
-- ✅ **自动补货**：原料不足时自动补充
-- ✅ **制作时间模拟**：真实的磨粉和制作时间
-
-## 🏗️ 系统架构
-
-```
-┌─────────────────┐    Modbus TCP     ┌─────────────────┐
-│   磨粉机模拟器    │◄─────────────────►│                 │
-│  (grinder_sim)  │     Port 502      │                 │
-└─────────────────┘                   │   智能代理       │
-                                      │ (agent)         │
-┌─────────────────┐   Custom TCP      │                 │
-│  咖啡机模拟器     │◄─────────────────►│                 │
-│(coffeemachine)  │    Port 8888      └─────────────────┘
-└─────────────────┘
-```
-
-### 协议映射
-
-| 设备 | 协议 | 端口 | 寄存器/命令 |
-|------|------|------|-------------|
-| 磨粉机 | Modbus TCP | 502 | CMD_REG(0), STATUS_REG(1), BEAN_LEVEL_REG(2) |
-| 咖啡机 | Custom TCP | 8888 | MAKE, STATUS, REFILL |
-
-## 🚀 快速开始
-
-### 环境要求
-
-- Python 3.7+
-- pip 包管理器
-
-### 安装依赖
-
-```bash
-# 克隆项目
-git clone https://github.com/yourusername/SmartCoffeeShop-A-smart-manufacture-project.git
-cd SmartCoffeeShop-A-smart-manufacture-project
-
-# 安装依赖
-pip install -r requirements.txt
-```
-
-### 启动系统
-
-#### 1. 启动磨粉机模拟器
-
-```bash
-python3 script/grinder/grinder_sim.py
-```
-
-#### 2. 启动咖啡机模拟器
-
-```bash
-python3 script/coffeemachine/coffeemachine_sim.py
-```
-
-#### 3. 运行智能代理测试
-
-```bash
-python3 test/coffeemachine/coffeemachine_agent.py
-```
-
-### 预期输出
-
-系统启动后，你将看到：
-
-1. **磨粉机模拟器**：Modbus服务器启动，监听端口502
-2. **咖啡机模拟器**：TCP服务器启动，监听端口8888
-3. **智能代理**：连接两个设备，开始处理咖啡订单
-
-## 📋 使用示例
-
-### 基本咖啡制作流程
-
-```python
-# 智能代理处理订单的完整流程
-def handle_order(coffee_type):
-    # 1. 检查配方和库存
-    # 2. 向磨粉机发送磨粉指令
-    # 3. 等待磨粉完成（5秒）
-    # 4. 向咖啡机发送制作指令
-    # 5. 等待咖啡制作完成
-    # 6. 返回制作结果
-```
-
-### 支持的咖啡类型
-
-| 咖啡类型 | 所需原料 | 制作时间 |
-|----------|----------|----------|
-| ESPRESSO | 无 | 5-10秒 |
-| AMERICANO | 无 | 5-10秒 |
-| LATTE | 牛奶 x3 | 5-10秒 |
-| CAPPUCCINO | 牛奶 x3 | 5-10秒 |
-| OAT LATTE | 燕麦奶 x3 | 5-10秒 |
-| MOCHA | 牛奶 x2, 巧克力酱 x1 | 5-10秒 |
-
-## 🔧 配置说明
-
-### 磨粉机配置
-
-```python
-# 寄存器地址配置
-CMD_REG = 0         # 命令寄存器
-STATUS_REG = 1      # 状态寄存器
-BEAN_LEVEL_REG = 2  # 豆量寄存器
-ERROR_CODE_REG = 3  # 错误代码寄存器
-```
-
-### 咖啡机配置
-
-```python
-# 库存配置
-MAX_STORAGE = 50    # 最大库存
-inventory = {
-    "MILK": 50,
-    "OAT_MILK": 50,
-    "MATCHA_SAUCE": 50,
-    "CHOCOLATE_SAUCE": 50,
-    "CARAMEL_SYRUP": 50,
-}
-```
-
-## 🧪 测试
-
-### 运行单元测试
-
-```bash
-# 测试磨粉机
-python3 test/grinder/client_test.py
-
-# 测试咖啡机代理
-python3 test/coffeemachine/coffeemachine_agent.py
-```
-
-### 测试场景
-
-1. **正常制作流程**：测试完整的咖啡制作流程
-2. **原料不足**：测试库存不足时的自动补货
-3. **设备故障**：测试设备异常时的错误处理
-4. **并发订单**：测试多个订单的处理能力
-
-## 📁 项目结构
-
-```
-SmartCoffeeShop-A-smart-manufacture-project/
-├── README.md                    # 项目说明文档
-├── LICENSE                      # MIT许可证
-├── requirements.txt             # Python依赖列表
-├── setup.py                     # 项目安装配置
-├── .gitignore                   # Git忽略规则
-├── script/                      # 核心模拟器脚本
-│   ├── grinder/
-│   │   └── grinder_sim.py       # 磨粉机模拟器
-│   └── coffeemachine/
-│       └── coffeemachine_sim.py # 咖啡机模拟器
-└── test/                        # 测试脚本
-    ├── grinder/
-    │   └── client_test.py       # 磨粉机客户端测试
-    └── coffeemachine/
-        └── coffeemachine_agent.py # 智能代理测试
-```
-
-## 🛠️ 故障排除
-
-### 常见问题
-
-1. **连接被拒绝**
-   ```bash
-   # 确保模拟器已启动
-   python3 script/grinder/grinder_sim.py
-   python3 script/coffeemachine/coffeemachine_sim.py
-   ```
-
-2. **端口被占用**
-   ```bash
-   # 检查端口占用情况
-   lsof -i :502  # 磨粉机端口
-   lsof -i :8888 # 咖啡机端口
-   ```
-
-3. **依赖包缺失**
-   ```bash
-   # 重新安装依赖
-   pip install -r requirements.txt
-   ```
-
-4. **磨粉机不响应**
-   - 检查Modbus TCP连接
-   - 确认寄存器地址配置正确
-   - 查看磨粉机日志输出
-
-## 🤝 贡献指南
-
-我们欢迎所有形式的贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详细信息。
-
-### 贡献方式
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
-
-## 👨‍💻 作者
-
-- **Orange** - *项目创建者* - [horrorange@qq.com](mailto:horrorange@qq.com)
-
-## 🙏 致谢
-
-- 感谢 [pyModbusTCP](https://github.com/sourceperl/pyModbusTCP) 提供的Modbus TCP库
-- 感谢 [colorlog](https://github.com/borntyping/python-colorlog) 提供的彩色日志支持
-
-## 🔗 相关链接
-
-- [Modbus协议官方文档](https://modbus.org/)
-- [工业物联网最佳实践](https://www.iiconsortium.org/)
-- [边缘计算架构指南](https://www.edgecomputing.org/)
-
----
-
-⭐ 如果这个项目对你有帮助，请给我们一个星标！
-
-## 🐳 Docker 使用指南
-
-本项目提供基于 Docker Compose 的一键式设备模拟与联调环境，覆盖磨豆机、咖啡机、制冰机、送餐机器人以及 MQTT Broker。
-
-### 目录结构（Docker）
-- `script/docker_sim/docker_compose.yml`：Compose 主文件，定义所有服务与网络
-- `script/docker_sim/mosquitto.conf`：MQTT Broker 配置（开发环境开启匿名访问）
-- `script/grinder/`：磨豆机镜像构建上下文与模拟器脚本
-- `script/coffeemachine/`：咖啡机镜像构建上下文与模拟器脚本
-- `script/ice_maker/`：制冰机镜像构建上下文与模拟器脚本
-- `script/delivery_robots/`：送餐机器人镜像构建上下文与模拟器脚本
-- `test/`：各设备的客户端/联调测试脚本
-
-### 环境准备
-- 安装 Docker Desktop（推荐 24+，Compose v2）
-- 打开终端并切换到项目根目录 `SmartCoffeeShop-A-smart-manufacture-project`
-- Windows 用户使用 PowerShell 执行命令
-
-### 一键启动
-- 构建并后台启动全部服务：
-  - `docker compose -f script/docker_sim/docker_compose.yml up -d --build`
-- 查看运行状态与端口：
-  - `docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"`
-
-### 服务与端口
-- `grinder1`：主机 `5021` → 容器 `502`（Modbus TCP）
-- `grinder2`：主机 `5022` → 容器 `502`（Modbus TCP）
-- `coffee_machine`：主机 `8888` → 容器 `8888`（自定义 TCP）
-- `ice_maker`：主机 `102` → 容器 `102`（S7/snap7）
-- `mqtt-broker`：主机 `1883` → 容器 `1883`（MQTT Broker）
-- `delivery_robots`：MQTT 客户端，不暴露端口，连接到 `mqtt-broker`
-
-### 常用操作
-- 启动指定服务：
-  - `docker compose -f script/docker_sim/docker_compose.yml up -d grinder1 grinder2`
-- 重新构建并启动：
-  - `docker compose -f script/docker_sim/docker_compose.yml up -d --build <service>`
-- 查看日志：
-  - `docker logs --tail=100 -f <container>`（如 `delivery_robots`、`mqtt-broker`）
-- 停止并清理：
-  - `docker compose -f script/docker_sim/docker_compose.yml down`
-  - 移除卷：`docker compose -f script/docker_sim/docker_compose.yml down -v`
-
-### MQTT 配置说明
-- Broker 镜像：`eclipse-mosquitto:2`
-- 配置挂载：`script/docker_sim/mosquitto.conf`（开发模式）
-  - `listener 1883 0.0.0.0`
-  - `allow_anonymous true`
-- 送餐机器人环境变量（已在 Compose 注入）：
-  - `MQTT_HOST=mqtt-broker`
-  - `MQTT_PORT=1883`
-
-### 验证与测试
-- 磨豆机（Modbus TCP）：
-  - 连接 `localhost:5021` 或 `localhost:5022`
-  - 示例：`python test/grinder/client_test.py`
-- 咖啡机（TCP）：
-  - 连接 `localhost:8888`（`telnet` 或 `nc`）
-- 制冰机（S7）：
-  - 使用 S7 客户端连接 `localhost:102` 进行区块读写测试
-- 送餐机器人（MQTT）：
-  - 连接 `localhost:1883`
-  - 发布到 `test/delivery_robot/command`，订阅 `test/delivery_robot/status`
-  - 示例消息：`{"order_id": 1, "coffee_type": "LATTE", "need_ice": false, "table_number": 3}`
-
-### 多实例扩展
-- 已在 Compose 中提供两台磨豆机：`grinder1` 与 `grinder2`
-- 如需更多实例，可复制服务块并映射新的主机端口（例如 `5023:502`）
-
-### 故障排查
-- 端口冲突（port is already allocated）：
-  - `docker rm -f <container>` 后重启对应服务
-- MQTT 连接被拒绝：
-  - 确认 `mqtt-broker` 已启动并加载 `mosquitto.conf`
-  - 确认 `delivery_robots` 使用 `MQTT_HOST=mqtt-broker`
-- `python-snap7` 加载失败：
-  - 使用 `python:3.11-slim` 作为 `ice_maker` 基础镜像（已配置）
+Smart Coffee Shop — 智能制造与网关流水线
+
+一个面向智能制造场景的端到端演示系统：设备模拟（磨豆机、咖啡机、制冰机、送餐机器人）+ 统一网关（HTTP/MQTT/Modbus/S7/TCP）+ 流水线（PostgreSQL + RabbitMQ）。
+
+目标
+- 跑通“订单入库 → 队列发布 → 设备执行 → 配送回执 → 结果回写”的闭环。
+- 提供清晰的技术架构、数据库结构、消息协议与运行方法。
+
+架构总览
+- 设备模拟（Python）：`script/grinder`（Modbus TCP）、`script/coffeemachine`（TCP）、`script/ice_maker`（S7/snap7）、`script/delivery_robots`（MQTT 客户端）
+- 网关与流水线（Go）：`smart_gateway/gateway`（设备驱动、统一 HTTP、MQTT 交互）、`smart_gateway/gateway/pipeline`（DB/队列/核心处理）
+- 中间件：PostgreSQL（订单）、RabbitMQ（订单与结果队列）、Mosquitto（MQTT Broker）
+
+目录结构
+- `smart_gateway/cmd/main.go`：统一 HTTP 入口（`POST /cmd`）
+- `smart_gateway/cmd/rabbit_sql_pipeline/main.go`：RabbitMQ + PostgreSQL 流水线入口
+- `smart_gateway/gateway/*.go`：设备驱动、统一命令与 HTTP 处理
+- `smart_gateway/gateway/pipeline/*.go`：订单表访问、队列接口、AMQP、核心工序、同步器
+- `script/docker_sim/docker_compose.yml`：一键启动设备与 MQTT Broker
+- `script/pipeline_demo/send_order.py`：向 PostgreSQL 插入订单并轮询结果
+- `test/*`：各设备测试脚本（MQTT 指令、磨豆机、咖啡机、制冰机）
+
+技术栈
+- Go：`github.com/rabbitmq/amqp091-go`、`github.com/lib/pq`、`github.com/eclipse/paho.mqtt.golang`
+- Python：`paho-mqtt`、`colorlog`、`python-snap7`
+- 中间件：PostgreSQL、RabbitMQ（`http://localhost:15672` 管理，默认 `guest/guest`）、Eclipse Mosquitto（MQTT）
+
+统一 HTTP 端点
+- 地址：`http://localhost:9090/cmd`
+- 载体：`smart_gateway/gateway/types.go:18-26`
+- 请求示例：`{"device":"delivery_robots","action":"deliver","coffee_type":"LATTE","need_ice":true,"table_number":8}`
+- 启动：`smart_gateway/cmd/main.go:25-27`
+
+MQTT 协议
+- 命令主题：`test/delivery_robot/command`
+- ACK/状态主题：`test/delivery_robot/status`
+- 机器人模拟器处理：`script/delivery_robots/deliveryrobots_sim.py:84-116`
+- 网关发布命令：`smart_gateway/gateway/robot.go:39-47`
+- 有效 JSON 示例：`{"order_id":999,"coffee_type":"TEST","need_ice":false,"table_number":99}`
+
+数据库结构（PostgreSQL）
+- 表：`orders`
+- 建表 SQL：`smart_gateway/gateway/pipeline/sqldb.go:31-45`
+-  字段：`id BIGSERIAL`、`coffee_type VARCHAR(32)`、`bool_ice BOOLEAN`、`table_num INT`、`status VARCHAR(16)`、`create_time TIMESTAMPTZ`、`finish_time TIMESTAMPTZ`、`error_msg TEXT`
+- 参考文档：`DB_Schema.md`
+
+队列与流水线
+- 队列：RabbitMQ（AMQP）`smart_gateway/gateway/pipeline/amqpqueue.go`
+- 队列名：`AMQP_QUEUE_ORDERS=queue_orders`、`AMQP_QUEUE_COMPLETED=queue_completed`
+- 轮询发布：`OrderPoller`（`smart_gateway/gateway/pipeline/poller.go:16-35`）
+- 核心工序：`Core`（磨豆→制作→出冰→配送）（`smart_gateway/gateway/pipeline/core.go:52-61`）
+- 结果写回：`ResultSyncer`（`smart_gateway/gateway/pipeline/syncer.go:11-19`）
+
+服务与端口
+- 磨豆机：主机 `5021/5022` → 容器 `502`
+- 咖啡机：主机 `8888`
+- 制冰机：主机 `102`
+- MQTT Broker：主机 `1883`
+- RabbitMQ：主机 `5672`（AMQP）、`15672`（管理界面）
+- 网关 HTTP：`9090`
+
+环境变量
+- 设备：`COFFEE_HOST`、`COFFEE_PORT`、`GRINDER_HOST`、`GRINDER_PORT`、`ICE_HOST`、`ICE_RACK`、`ICE_SLOT`、`MQTT_HOST`、`MQTT_PORT`
+- 流水线：`ICE_MIN_STOCK`（默认 200）、`ICE_DISPENSE_AMOUNT`（默认 100）
+- PostgreSQL：`PG_HOST`、`PG_PORT`、`PG_DB`、`PG_USER`、`PG_PASS`
+- RabbitMQ：`AMQP_URL`、`AMQP_QUEUE_ORDERS`、`AMQP_QUEUE_COMPLETED`
+
+运行方法（Windows/PowerShell）
+- 安装：Docker Desktop、Go（1.24+）、Python（3.11+）；在项目根执行 `pip install -r requirements.txt`
+- 一键设备与 MQTT Broker：`docker compose -f script\docker_sim\docker_compose.yml up -d --build`
+- RabbitMQ：`docker run -d --name rabbitmq --restart unless-stopped -p 5672:5672 -p 15672:15672 rabbitmq:3-management`
+- 流水线：
+  - 在 `smart_gateway`：`go mod tidy`
+  - 设置环境：
+    - `setx PG_HOST localhost`
+    - `setx PG_PORT 5432`
+    - `setx PG_DB smartshop`
+    - `setx PG_USER postgres`
+    - `setx PG_PASS <你的密码>`
+    - `setx AMQP_URL amqp://guest:guest@localhost:5672/`
+    - `setx AMQP_QUEUE_ORDERS queue_orders`
+    - `setx AMQP_QUEUE_COMPLETED queue_completed`
+    - `setx MQTT_HOST localhost`
+    - `setx MQTT_PORT 1883`
+  - 运行：`go run cmd\rabbit_sql_pipeline\main.go`
+- 投递订单：`python script\pipeline_demo\send_order.py`（输出中出现 `done` 即成功）
+- 统一 HTTP（可选）：
+  - `go run cmd\main.go`
+  - `Invoke-WebRequest -Method Post -ContentType 'application/json' -Body '{"device":"grinder","action":"grind"}' -Uri http://localhost:9090/cmd`
+
+验证与示例
+- MQTT（PowerShell 转义）：`mosquitto_pub -h localhost -t test/delivery_robot/command -m '{\"order_id\":999,\"coffee_type\":\"TEST\",\"need_ice\":false,\"table_number\":99}'`
+- Python 测试：`python test\delivery_robot\delivery_robot_test.py`
+
+常见问题
+- deliver_timeout：一般为无效 JSON 或不同 Broker。确保使用 `json.dumps`，统一连接 `localhost:1883`（宿主）/ `mqtt-broker:1883`（容器）。参考 `smart_gateway/gateway/robot.go:52-56`。
+- 端口占用：查看 `docker ps`，避免冲突。
+- PostgreSQL 连通性：检查 `PG_*` 环境变量并确认库存在；流水线自动建表。
+- Windows IPv6：连接异常时用 `127.0.0.1` 代替 `localhost`。
+
+代码位置参考
+- HTTP 入口：`smart_gateway/cmd/main.go:25-27`
+- 设备驱动：磨豆机 `smart_gateway/gateway/grinder.go`，咖啡机 `smart_gateway/gateway/coffee.go`，制冰机 `smart_gateway/gateway/ice.go`
+- 配送机器人 MQTT：`smart_gateway/gateway/robot.go:21-57`
+- 流水线核心：`smart_gateway/gateway/pipeline/core.go:52-61`
+- 队列 AMQP：`smart_gateway/gateway/pipeline/amqpqueue.go:29-37`
+- 数据库访问：`smart_gateway/gateway/pipeline/sqldb.go:48-71`、`smart_gateway/gateway/pipeline/sqldb.go:75-105`
+
+安全提示
+- 不要将数据库密码或密钥提交到仓库；通过环境变量配置敏感信息。
+
+许可证与作者
+- License: MIT
+- 作者：Orange（horrorange@qq.com）
